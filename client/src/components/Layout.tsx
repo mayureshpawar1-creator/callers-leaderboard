@@ -16,7 +16,7 @@ export const SECTIONS: { id: Section; label: string; phase: number }[] = [
   { id: "settings", label: "Settings", phase: 3 },
 ];
 
-export const AVAILABLE_PHASE = 5;
+export const AVAILABLE_PHASE = 6;
 
 export function Layout(props: {
   user: SessionUser;

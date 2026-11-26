@@ -542,3 +542,57 @@ export interface WeekIncentives {
     excludedPolicies: number;
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Phase 6: dashboard / report (one object drives the dashboard AND the Excel export)
+// ---------------------------------------------------------------------------------------------
+
+export interface ReportCallerRow {
+  agentId: string;
+  displayName: string;
+  active: boolean;
+  attempts: number;
+  talkSeconds: number;
+  callbacks: number;
+  hotLeads: number;
+  presentations: number;
+  conversions: number;
+  kpiMarks: number;
+  conversionMarks: number | null;
+  totalMarks: number | null;
+  scoreStatus: WeeklyScoreStatus;
+  unresolvedDays: number;
+  eligibleAtsPaise: number;
+  incentivePaise: number;
+  incentiveStatus: IncentiveStatus | "none";
+  publishedRank: number | null;
+}
+
+export interface WeekReport {
+  generatedAt: string;
+  week: WeekSummary;
+  rules: KpiRuleVersion;
+  summary: {
+    totalCallers: number;
+    totalAttempts: number;
+    totalTalkSeconds: number;
+    totalCallbacks: number;
+    totalHotLeads: number;
+    totalPresentations: number;
+    totalConversions: number;
+    completeScores: number;
+    averageScore: number | null; // over complete scores only
+    unresolvedCallerDays: number;
+    totalEligibleAtsPaise: number;
+    provisionalPaise: number;
+    approvedPaise: number;
+    paidPaise: number;
+    pendingReviewPolicies: number;
+    excludedPolicies: number;
+  };
+  callers: ReportCallerRow[];
+  daily: WeekDailyReport;
+  incentives: WeekIncentives;
+  callerOfWeek: CotwPublication | null;
+  callerOfWeekStale: boolean; // scores changed since the ranking was published
+}

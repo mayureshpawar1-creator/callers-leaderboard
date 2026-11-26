@@ -13,6 +13,8 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { ScorecardsPage } from "./pages/ScorecardsPage";
 import { ScorecardDetailPage } from "./pages/ScorecardDetailPage";
 import { IncentivesPage } from "./pages/IncentivesPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { ReportsPage } from "./pages/ReportsPage";
 
 interface AuthState {
   setupRequired: boolean;
@@ -45,7 +47,7 @@ export function App() {
   if (!auth) return <div className="p-8 text-slate-500">Loading…</div>;
   if (!auth.user) return <AuthScreen setupRequired={auth.setupRequired} onDone={refresh} />;
 
-  const section = (route[0] ?? "cdr") as Section;
+  const section = (route[0] ?? "dashboard") as Section;
   let page;
   if (section === "cdr" && route[1]) page = <ImportDetailPage importId={Number(route[1])} navigate={navigate} />;
   else if (section === "cdr") page = <CdrUploadPage navigate={navigate} />;
@@ -56,6 +58,8 @@ export function App() {
     page = <ScorecardDetailPage weekId={Number(route[1])} agentId={decodeURIComponent(route[2])} navigate={navigate} />;
   else if (section === "scorecards") page = <ScorecardsPage navigate={navigate} />;
   else if (section === "incentives") page = <IncentivesPage />;
+  else if (section === "dashboard") page = <DashboardPage navigate={navigate} />;
+  else if (section === "reports") page = <ReportsPage navigate={navigate} />;
   else if (section === "callers") page = <CallerDirectoryPage agentId={route[1] ? decodeURIComponent(route[1]) : undefined} navigate={navigate} />;
   else page = <ComingSoon section={section} />;
 

@@ -1,7 +1,7 @@
 # Caller Performance & Incentive Manager
 
 Local management tool for CDR processing, weekly KPI scoring and ATS-based incentives.
-**Status: Phase 5 (policies, ATS incentive schedule, approvals and payments) complete.**
+**Status: Phase 6 (dashboard and Excel report) complete.**
 
 ## Run locally
 
@@ -97,6 +97,12 @@ Policy rules: AI/website → counted; referral + EMI → excluded; referral (no 
 leadership review (approver records a note and the ATS to count). Duplicate policy references are rejected.
 Status flow: calculated (provisional) → approved (snapshot) → paid (payment reference). Any change to a caller-week's
 policies or to the schedule revokes an unpaid approval; paid caller-weeks are locked.
+
+## Dashboard and Excel report (Phase 6)
+
+`buildWeekReport()` is the single source for the dashboard (`GET /api/weeks/:id/report`) and the Excel file
+(`GET /api/weeks/:id/report.xlsx`): Management Summary, Day-wise Performance, Weekly Scorecards, Incentive Ledger.
+Totals rows are SUM formulas whose stored results equal the server-calculated figures; tests check both.
 
 Planned for later phases:
 `conversion_marks`, `policies` (+ revisions), `incentive_slab_versions`,

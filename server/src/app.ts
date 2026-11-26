@@ -11,6 +11,7 @@ import { perfRoutes } from "./routes/perfRoutes.js";
 import { manualRoutes } from "./routes/manualRoutes.js";
 import { scoreRoutes } from "./routes/scoreRoutes.js";
 import { incentiveRoutes } from "./routes/incentiveRoutes.js";
+import { reportRoutes } from "./routes/reportRoutes.js";
 import { IncentiveError } from "./incentives/slabService.js";
 import { ConversionError } from "./scores/conversionService.js";
 import { CotwError } from "./scores/cotwService.js";
@@ -37,7 +38,7 @@ export function createApp(db: DB, opts: AppOptions) {
 
   app.use("/api/auth", authRoutes(db, { secureCookies: opts.secureCookies ?? false }));
   app.use("/api/cdr", requireAuth(db), cdrRoutes(db, { uploadDir: opts.uploadDir }));
-  app.use("/api", requireAuth(db), perfRoutes(db), manualRoutes(db), scoreRoutes(db), incentiveRoutes(db));
+  app.use("/api", requireAuth(db), perfRoutes(db), manualRoutes(db), scoreRoutes(db), incentiveRoutes(db), reportRoutes(db));
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found" });
   });

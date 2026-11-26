@@ -32,12 +32,20 @@ export interface SyntheticTruth {
   totalTalkSeconds: number;
 }
 
-export async function syntheticCdrXlsx(): Promise<{ buffer: Buffer; truth: SyntheticTruth }> {
+const addDays = (ymd: string, n: number) => {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+/** Build the workbook. `startDate` (a Monday) shifts the six working days; default 16 Nov 2026. */
+export async function syntheticCdrXlsx(opts: { startDate?: string } = {}): Promise<{ buffer: Buffer; truth: SyntheticTruth }> {
+  const days = opts.startDate ? SYN_DAYS.map((_, i) => addDays(opts.startDate!, i)) : SYN_DAYS;
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("data");
   ws.getRow(1).values = ["CDR_Mask_Report"];
-  ws.getRow(3).values = ["From : ", "2026-11-16 00:00:00"];
-  ws.getRow(4).values = ["To : ", "2026-11-21 13:30:00"]; // last day only partly covered
+  ws.getRow(3).values = ["From : ", `${days[0]} 00:00:00`];
+  ws.getRow(4).values = ["To : ", `${days[5]} 13:30:00`]; // last day only partly covered
   ws.getRow(5).values = ["Format : ", "excel"];
   ws.getRow(6).values = ["ReportDate : ", "23-Nov-2026 10:00:00"];
   ws.getRow(9).values = SYN_HEADERS;
@@ -45,7 +53,7 @@ export async function syntheticCdrXlsx(): Promise<{ buffer: Buffer; truth: Synth
   const truth: SyntheticTruth = { rows: 0, agentDays: {}, totalAttempts: 0, totalTalkSeconds: 0 };
   let callNo = 50_000_000;
   let r = 10;
-  SYN_DAYS.forEach((day, di) => {
+  days.forEach((day, di) => {
     for (const a of SYN_AGENTS) {
       const n = PLAN[a.id]![di]!;
       for (let i = 0; i < n; i++) {
