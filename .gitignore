@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/
+*.log
+
+# Real CDR data and tests that use it: local only, never committed
+server/test/private/
