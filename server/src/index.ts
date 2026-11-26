@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDatabase } from "./db/index.js";
 import { createApp } from "./app.js";
+import { startBackupScheduler } from "./system/backupService.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = process.cwd();
@@ -12,9 +13,12 @@ const host = process.env.HOST ?? "127.0.0.1"; // local-only by default
 const db = openDatabase(path.join(dataDir, "cim.sqlite"));
 const app = createApp(db, {
   uploadDir: path.join(dataDir, "uploads"),
+  backupDir: path.join(dataDir, "backups"),
   // Compiled server lives in dist/server/server/src; the client build is dist/client.
   clientDir: path.resolve(here, "../../../client"),
 });
+
+startBackupScheduler(db, path.join(dataDir, "backups"));
 
 app.listen(port, host, () => {
   console.log(`Caller Performance & Incentive Manager API on http://${host}:${port} (data: ${dataDir})`);

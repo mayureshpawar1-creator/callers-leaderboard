@@ -1,139 +1,193 @@
 import { useEffect, useState } from "react";
-import type { KpiRuleConfig, KpiRuleVersion } from "../../../shared/types";
-import { api, ApiError } from "../api";
-import { fmtDate, fmtDuration, fmtTimestamp } from "../format";
+import { api } from "../api";
+import { fmtTimestamp } from "../format";
+import { KpiRulesPanel } from "./KpiRulesPanel";
 import { IncentiveSchedules } from "../components/IncentiveSchedules";
 
-type Form = {
-  effectiveFrom: string; note: string;
-  cbW: string; cbT: string; cbD: string; hlW: string; hlT: string; hlD: string;
-  tkW: string; tkH: string; tkM: string; tkD: string; atW: string; atT: string; atD: string; conv: string;
-};
-
-function formFrom(c: KpiRuleConfig): Form {
-  return {
-    effectiveFrom: "", note: "",
-    cbW: String(c.callbacks.weight), cbT: String(c.callbacks.dailyTarget), cbD: String(c.callbacks.requiredDays),
-    hlW: String(c.hotLeads.weight), hlT: String(c.hotLeads.dailyTarget), hlD: String(c.hotLeads.requiredDays),
-    tkW: String(c.talk.weight), tkH: String(Math.floor(c.talk.dailyTargetSeconds / 3600)),
-    tkM: String(Math.floor((c.talk.dailyTargetSeconds % 3600) / 60)), tkD: String(c.talk.requiredDays),
-    atW: String(c.attempts.weight), atT: String(c.attempts.dailyTarget), atD: String(c.attempts.requiredDays),
-    conv: String(c.conversion.maxMarks),
-  };
-}
-
-const n = (s: string) => Number(s);
+const TABS = [
+  ["kpi", "KPI rules"], ["incentives", "Incentive schedules"], ["users", "Administrators"], ["backups", "Backups"], ["logs", "Activity & errors"],
+] as const;
+type Tab = (typeof TABS)[number][0];
 
 export function SettingsPage() {
-  const [versions, setVersions] = useState<KpiRuleVersion[]>([]);
-  const [form, setForm] = useState<Form | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  const load = () => api.get<KpiRuleVersion[]>("/api/kpi-rules").then((v) => { setVersions(v); }).catch((e: Error) => setError(e.message));
-  useEffect(() => { load(); }, []);
-
-  const config = (f: Form): KpiRuleConfig => ({
-    callbacks: { weight: n(f.cbW), dailyTarget: n(f.cbT), requiredDays: n(f.cbD) },
-    hotLeads: { weight: n(f.hlW), dailyTarget: n(f.hlT), requiredDays: n(f.hlD) },
-    talk: { weight: n(f.tkW), dailyTargetSeconds: n(f.tkH) * 3600 + n(f.tkM) * 60, requiredDays: n(f.tkD) },
-    attempts: { weight: n(f.atW), dailyTarget: n(f.atT), requiredDays: n(f.atD) },
-    conversion: { maxMarks: n(f.conv) },
-  });
-  const total = form ? [form.cbW, form.hlW, form.tkW, form.atW, form.conv].reduce((s, v) => s + n(v), 0) : 0;
-
-  async function submit(acknowledge = false) {
-    if (!form) return;
-    setError(null);
-    try {
-      await api.post("/api/kpi-rules", { effectiveFrom: form.effectiveFrom, config: config(form), note: form.note, acknowledgeAffectedWeeks: acknowledge });
-      setForm(null);
-      setNotice("New rule version saved.");
-      load();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && e.message.includes("existing week") && !acknowledge) {
-        if (window.confirm(`${e.message}\n\nOnly do this if management has approved changing those weeks.`)) return submit(true);
-        return;
-      }
-      setError((e as Error).message);
-    }
-  }
-
-  const set = (k: keyof Form) => (ev: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form!, [k]: ev.target.value });
-  const num = (k: keyof Form, w = "w-20") => (
-    <input className={`input ${w} text-right`} inputMode="decimal" value={form![k]} onChange={set(k)} />
-  );
-
+  const [tab, setTab] = useState<Tab>("kpi");
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold">Settings</h1>
-        <h2 className="mt-3 text-lg font-semibold">KPI rules</h2>
-        <p className="text-sm text-slate-600">
-          Rules are versioned and never edited in place. Each week is scored with the version in force on its first day,
-          so past weeks keep their results unless you deliberately create a version that covers them.
-        </p>
+      <h1 className="text-xl font-semibold">Settings</h1>
+      <div className="flex flex-wrap gap-1 border-b border-slate-200">
+        {TABS.map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === id ? "border-indigo-700 font-semibold text-indigo-800" : "border-transparent text-slate-600 hover:text-slate-900"}`}>
+            {label}
+          </button>
+        ))}
       </div>
-      {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-      {notice && <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</div>}
+      {tab === "kpi" && <KpiRulesPanel />}
+      {tab === "incentives" && <IncentiveSchedules />}
+      {tab === "users" && <UsersPanel />}
+      {tab === "backups" && <BackupsPanel />}
+      {tab === "logs" && <LogsPanel />}
+    </div>
+  );
+}
 
+interface User { id: number; username: string; displayName: string; active: boolean; createdAt: string; lastLoginAt: string | null }
+
+function UsersPanel() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [form, setForm] = useState({ username: "", displayName: "", password: "" });
+  const [pw, setPw] = useState({ currentPassword: "", newPassword: "", confirm: "" });
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = () => api.get<User[]>("/api/users").then(setUsers).catch((e: Error) => setMsg({ ok: false, text: e.message }));
+  useEffect(() => { load(); }, []);
+  async function run(fn: () => Promise<unknown>, ok: string) {
+    setMsg(null);
+    try { await fn(); setMsg({ ok: true, text: ok }); load(); return true; } catch (e) { setMsg({ ok: false, text: (e as Error).message }); return false; }
+  }
+  const reset = (u: User) => {
+    const p = window.prompt(`New temporary password for ${u.displayName} (at least 8 characters). They will be signed out.`);
+    if (p) run(() => api.post(`/api/users/${u.id}/reset-password`, { password: p }), `Password reset for ${u.displayName}. Share it with them privately.`);
+  };
+  return (
+    <div className="space-y-4">
+      {msg && <div className={`rounded-md px-3 py-2 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>{msg.text}</div>}
       <div className="card overflow-x-auto p-0">
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold">Rule versions</span>
-          {!form && versions[0] && <button className="btn-secondary" onClick={() => { setNotice(null); setForm(formFrom(versions[0]!.config)); }}>New version…</button>}
-        </div>
+        <div className="px-4 py-3 text-sm font-semibold">Administrators</div>
         <table className="w-full">
-          <thead>
-            <tr>
-              <th className="th">Effective from</th><th className="th">Callbacks</th><th className="th">Hot leads</th>
-              <th className="th">Talk time</th><th className="th">Attempts</th><th className="th num">Conversion</th><th className="th">Created</th>
-            </tr>
-          </thead>
+          <thead><tr><th className="th">Name</th><th className="th">Username</th><th className="th">Status</th><th className="th">Added</th><th className="th">Last sign-in</th><th className="th" /></tr></thead>
           <tbody>
-            {versions.map((v) => (
-              <tr key={v.id} className="align-top">
-                <td className="td">{v.effectiveFrom <= "2000-01-01" ? "Initial" : fmtDate(v.effectiveFrom)}</td>
-                <td className="td text-xs">{v.config.callbacks.dailyTarget}/day · {v.config.callbacks.weight} marks · {v.config.callbacks.requiredDays} days</td>
-                <td className="td text-xs">{v.config.hotLeads.dailyTarget}/day · {v.config.hotLeads.weight} marks · {v.config.hotLeads.requiredDays} days</td>
-                <td className="td text-xs">{fmtDuration(v.config.talk.dailyTargetSeconds)}/day · {v.config.talk.weight} marks · {v.config.talk.requiredDays} days</td>
-                <td className="td text-xs">{v.config.attempts.dailyTarget}/day · {v.config.attempts.weight} marks · {v.config.attempts.requiredDays} days</td>
-                <td className="td num text-xs">{v.config.conversion.maxMarks} marks</td>
-                <td className="td whitespace-normal text-xs">{v.createdBy ?? "System"}, {fmtTimestamp(v.createdAt)}{v.note && <div className="text-slate-500">{v.note}</div>}</td>
+            {users.map((u) => (
+              <tr key={u.id} className={u.active ? "" : "text-slate-400"}>
+                <td className="td font-medium">{u.displayName}</td>
+                <td className="td font-mono text-xs">{u.username}</td>
+                <td className="td">{u.active ? "Active" : "Deactivated"}</td>
+                <td className="td text-xs">{fmtTimestamp(u.createdAt)}</td>
+                <td className="td text-xs">{fmtTimestamp(u.lastLoginAt)}</td>
+                <td className="td text-right">
+                  <button className="mr-3 text-xs text-indigo-700 hover:underline" onClick={() => reset(u)}>Reset password</button>
+                  <button className="text-xs text-indigo-700 hover:underline" onClick={() => {
+                    if (u.active && !window.confirm(`Deactivate ${u.displayName}? They will be signed out and unable to sign in. Their history is kept.`)) return;
+                    run(() => api.patch(`/api/users/${u.id}`, { active: !u.active }), u.active ? `${u.displayName} deactivated.` : `${u.displayName} re-activated.`);
+                  }}>{u.active ? "Deactivate" : "Re-activate"}</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {form && (
-        <div className="card max-w-3xl space-y-4">
-          <div className="text-sm font-semibold">New rule version</div>
-          <div className="flex flex-wrap gap-4">
-            <label className="text-xs text-slate-600">Effective from (first day of the week it applies to)
-              <input type="date" className="input mt-1" value={form.effectiveFrom} onChange={set("effectiveFrom")} />
-            </label>
-            <label className="flex-1 text-xs text-slate-600">Reason / approval note
-              <input className="input mt-1" value={form.note} onChange={set("note")} />
-            </label>
-          </div>
-          <table className="w-full">
-            <thead><tr><th className="th">KPI</th><th className="th">Daily target</th><th className="th">Weight (marks)</th><th className="th">Days required for full marks</th></tr></thead>
-            <tbody>
-              <tr><td className="td">Callbacks after presentation</td><td className="td">{num("cbT")}</td><td className="td">{num("cbW")}</td><td className="td">{num("cbD")}</td></tr>
-              <tr><td className="td">Hot leads</td><td className="td">{num("hlT")}</td><td className="td">{num("hlW")}</td><td className="td">{num("hlD")}</td></tr>
-              <tr><td className="td">Talk duration</td><td className="td">{num("tkH", "w-14")} h {num("tkM", "w-14")} m</td><td className="td">{num("tkW")}</td><td className="td">{num("tkD")}</td></tr>
-              <tr><td className="td">Calling attempts</td><td className="td">{num("atT")}</td><td className="td">{num("atW")}</td><td className="td">{num("atD")}</td></tr>
-              <tr><td className="td">Conversion (manual marks)</td><td className="td text-slate-500">—</td><td className="td">{num("conv")}</td><td className="td text-slate-500">—</td></tr>
-              <tr><td className="td font-semibold" colSpan={2}>Total</td><td className={`td font-semibold ${total === 100 ? "text-emerald-700" : "text-red-700"}`}>{total} / 100</td><td className="td" /></tr>
-            </tbody>
-          </table>
-          <div className="flex gap-2">
-            <button className="btn-primary" disabled={!form.effectiveFrom || total !== 100} onClick={() => submit()}>Save new version</button>
-            <button className="btn-secondary" onClick={() => setForm(null)}>Cancel</button>
-          </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="card space-y-2">
+          <div className="text-sm font-semibold">Add administrator</div>
+          <input className="input" placeholder="Full name" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+          <input className="input" placeholder="Username (e.g. priya.m)" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <input className="input" type="password" placeholder="Temporary password (8+ characters)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <button className="btn-primary" onClick={async () => { if (await run(() => api.post("/api/users", form), `${form.displayName} can now sign in.`)) setForm({ username: "", displayName: "", password: "" }); }}>Add administrator</button>
         </div>
-      )}
-      <div className="border-t border-slate-200 pt-5"><IncentiveSchedules /></div>
+        <div className="card space-y-2">
+          <div className="text-sm font-semibold">Change my password</div>
+          <input className="input" type="password" placeholder="Current password" value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} />
+          <input className="input" type="password" placeholder="New password (8+ characters)" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
+          <input className="input" type="password" placeholder="Confirm new password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} />
+          <button className="btn-secondary" onClick={async () => {
+            if (pw.newPassword !== pw.confirm) return setMsg({ ok: false, text: "New passwords do not match." });
+            if (await run(() => api.post("/api/me/password", { currentPassword: pw.currentPassword, newPassword: pw.newPassword }), "Password changed. Other sessions were signed out.")) {
+              setPw({ currentPassword: "", newPassword: "", confirm: "" });
+            }
+          }}>Change password</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface Backup { name: string; sizeBytes: number; createdAt: string }
+
+function BackupsPanel() {
+  const [list, setList] = useState<Backup[]>([]);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get<Backup[]>("/api/backups").then(setList).catch((e: Error) => setMsg({ ok: false, text: e.message }));
+  useEffect(() => { load(); }, []);
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-2 text-sm text-slate-700">
+        <p>The database is backed up automatically once a day while the app is running; the newest <b>30</b> backups are kept in the <code>data/backups</code> folder.
+          Use “Back up now” before big changes (e.g. approving a new incentive schedule).</p>
+        <p className="text-xs text-slate-500">To restore: stop the app, keep a copy of <code>data/cim.sqlite</code>, replace it with the chosen backup file renamed to <code>cim.sqlite</code>, and start the app again.
+          For a copy off this computer, also copy <code>data/uploads</code> (the original CDR files).</p>
+        <button className="btn-primary" disabled={busy} onClick={async () => {
+          setBusy(true); setMsg(null);
+          try { const b = await api.post<Backup>("/api/backups"); setMsg({ ok: true, text: `Backup ${b.name} created.` }); load(); }
+          catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+        }}>{busy ? "Backing up…" : "Back up now"}</button>
+      </div>
+      {msg && <div className={`rounded-md px-3 py-2 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>{msg.text}</div>}
+      <div className="card overflow-x-auto p-0">
+        <table className="w-full">
+          <thead><tr><th className="th">Backup</th><th className="th">Created</th><th className="th num">Size</th><th className="th" /></tr></thead>
+          <tbody>
+            {list.length === 0 && <tr><td className="td text-slate-500" colSpan={4}>No backups yet. The first automatic backup runs a few seconds after the app starts.</td></tr>}
+            {list.map((b) => (
+              <tr key={b.name}>
+                <td className="td font-mono text-xs">{b.name}</td>
+                <td className="td text-xs">{fmtTimestamp(b.createdAt)}</td>
+                <td className="td num text-xs">{(b.sizeBytes / 1024 / 1024).toFixed(2)} MB</td>
+                <td className="td text-right"><a className="text-xs text-indigo-700 hover:underline" href={`/api/backups/${b.name}`}>Download</a></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+interface AuditRow { id: number; at: string; entity: string; entityId: string | null; action: string; note: string | null; by: string }
+interface ErrorRow { id: number; at: string; context: string; message: string }
+
+function LogsPanel() {
+  const [audit, setAudit] = useState<AuditRow[]>([]);
+  const [errors, setErrors] = useState<ErrorRow[]>([]);
+  const [entity, setEntity] = useState("");
+  useEffect(() => { api.get<AuditRow[]>(`/api/audit-log?limit=300${entity ? `&entity=${entity}` : ""}`).then(setAudit); }, [entity]);
+  useEffect(() => { api.get<ErrorRow[]>("/api/error-log").then(setErrors); }, []);
+  const ENTITIES = ["", "cdr_import", "caller", "manual_entry", "conversion_marks", "caller_of_week", "policy", "incentive_approval", "incentive_schedule", "kpi_rules", "week", "user", "backup"];
+  return (
+    <div className="space-y-4">
+      <div className="card overflow-x-auto p-0">
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="text-sm font-semibold">Activity log (who changed what)</span>
+          <select className="input w-56" value={entity} onChange={(e) => setEntity(e.target.value)}>
+            {ENTITIES.map((e) => <option key={e} value={e}>{e ? e.replace(/_/g, " ") : "All activity"}</option>)}
+          </select>
+        </div>
+        <table className="w-full">
+          <thead><tr><th className="th">When</th><th className="th">Who</th><th className="th">What</th><th className="th">Item</th><th className="th">Note</th></tr></thead>
+          <tbody>
+            {audit.map((a) => (
+              <tr key={a.id}>
+                <td className="td text-xs">{fmtTimestamp(a.at)}</td>
+                <td className="td text-xs">{a.by}</td>
+                <td className="td text-xs">{a.entity.replace(/_/g, " ")} · <b>{a.action.replace(/_/g, " ")}</b></td>
+                <td className="td font-mono text-[11px]">{a.entityId}</td>
+                <td className="td max-w-80 whitespace-normal text-xs text-slate-600">{a.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card overflow-x-auto p-0">
+        <div className="px-4 py-3 text-sm font-semibold">Error log</div>
+        <table className="w-full">
+          <thead><tr><th className="th">When</th><th className="th">Where</th><th className="th">Error</th></tr></thead>
+          <tbody>
+            {errors.length === 0 && <tr><td className="td text-slate-500" colSpan={3}>No errors recorded.</td></tr>}
+            {errors.map((e) => (
+              <tr key={e.id}><td className="td text-xs">{fmtTimestamp(e.at)}</td><td className="td text-xs">{e.context}</td><td className="td whitespace-normal text-xs">{e.message}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

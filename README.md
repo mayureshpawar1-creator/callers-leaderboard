@@ -1,7 +1,7 @@
 # Caller Performance & Incentive Manager
 
 Local management tool for CDR processing, weekly KPI scoring and ATS-based incentives.
-**Status: Phase 6 (dashboard and Excel report) complete.**
+**Status: all 7 phases complete.**
 
 ## Run locally
 
@@ -104,19 +104,32 @@ policies or to the schedule revokes an unpaid approval; paid caller-weeks are lo
 (`GET /api/weeks/:id/report.xlsx`): Management Summary, Day-wise Performance, Weekly Scorecards, Incentive Ledger.
 Totals rows are SUM formulas whose stored results equal the server-calculated figures; tests check both.
 
-Planned for later phases:
-`conversion_marks`, `policies` (+ revisions), `incentive_slab_versions`,
-`weekly_incentives` (calculated → approved → paid, with approval snapshots), backups.
+## Administration (Phase 7)
 
-## CDR import rules
+- **Administrators**: Settings → Administrators. Add admins, reset a password (signs them out), deactivate or
+  re-activate (you cannot deactivate yourself or the last active admin), change your own password.
+  Accounts are never deleted so the audit trail keeps names.
+- **Backups**: the database is backed up automatically once a day while the app runs (SQLite online backup);
+  the newest 30 are kept in `data/backups`. Settings → Backups has "Back up now" and downloads.
+  *Restore*: stop the app, keep a copy of `data/cim.sqlite`, replace it with the backup file renamed to
+  `cim.sqlite`, start the app. For an off-machine copy also copy `data/uploads` (original CDR files).
+- **Activity & errors**: Settings → Activity & errors shows the audit log (who changed what, when) and
+  unexpected server errors.
 
-- Header row found dynamically (first 50 rows of each sheet; sheet `data` preferred). Required: `DATE, CALL_NUMBER, Attempts, AGENT_ID, AGENT_NAME, TALK_DURATION`. Exact column names win over case-insensitive matches (the real export has both `DISPOSITION` and `disposition`).
-- DATE is day-first (DD/MM/YYYY); impossible dates are rejected, never guessed. CDR times are IST wall-clock and never shifted.
-- TALK_DURATION `HH:MM:SS` → integer seconds (fractions floored and flagged). `MM:SS` is rejected as ambiguous. CALL_DURATION is never used for talk time.
-- Call key = `CALL_NUMBER`; rows without it use a content fingerprint and are only imported if the admin explicitly includes them.
-- Each row is classified: new / already imported / repeated in file / conflict (same CALL_NUMBER, different data) / no CALL_NUMBER / invalid. Conflicts require an explicit keep/replace decision. Invalid rows are rejected and kept for audit.
-- Confirming re-checks everything inside a transaction; if data changed since the preview, the commit is refused and the preview refreshed.
-- Day coverage from the report's From/To metadata: full / partial / outside period / unknown.
+## Weekly routine
+
+1. Upload the CDR report(s) → review the preview → Confirm.
+2. Daily Performance: create the week (Mon–Sat working by default), resolve amber days.
+3. Manual Entries: callbacks, hot leads, presentations, conversions per caller per day.
+4. Weekly Scorecards: enter conversion marks; on Saturday evening publish Caller of the Week and share the card.
+5. Incentive Management: add converted policies, record leadership reviews, approve, mark paid after payment.
+6. Dashboard / Reports: download the Excel report.
+
+## Known limitations
+
+- Single-machine SQLite. For shared access across offices, move to PostgreSQL (schema uses portable types).
+- `npm audit` reports 2 moderate advisories in `uuid` pulled in by `exceljs`; the affected function is not used here.
+- The app binds to 127.0.0.1 and uses non-secure cookies; put it behind HTTPS before exposing it on a network.
 
 ## Tests
 

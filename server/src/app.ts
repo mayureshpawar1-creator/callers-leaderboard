@@ -12,6 +12,8 @@ import { manualRoutes } from "./routes/manualRoutes.js";
 import { scoreRoutes } from "./routes/scoreRoutes.js";
 import { incentiveRoutes } from "./routes/incentiveRoutes.js";
 import { reportRoutes } from "./routes/reportRoutes.js";
+import { systemRoutes } from "./routes/systemRoutes.js";
+import { UserError } from "./system/userService.js";
 import { IncentiveError } from "./incentives/slabService.js";
 import { ConversionError } from "./scores/conversionService.js";
 import { CotwError } from "./scores/cotwService.js";
@@ -25,6 +27,7 @@ import { logError } from "./lib/audit.js";
 
 export interface AppOptions {
   uploadDir: string;
+  backupDir?: string;
   clientDir?: string; // built web client to serve in production
   secureCookies?: boolean;
 }
@@ -38,7 +41,8 @@ export function createApp(db: DB, opts: AppOptions) {
 
   app.use("/api/auth", authRoutes(db, { secureCookies: opts.secureCookies ?? false }));
   app.use("/api/cdr", requireAuth(db), cdrRoutes(db, { uploadDir: opts.uploadDir }));
-  app.use("/api", requireAuth(db), perfRoutes(db), manualRoutes(db), scoreRoutes(db), incentiveRoutes(db), reportRoutes(db));
+  app.use("/api", requireAuth(db), perfRoutes(db), manualRoutes(db), scoreRoutes(db), incentiveRoutes(db), reportRoutes(db),
+    systemRoutes(db, { backupDir: opts.backupDir ?? path.join(path.dirname(opts.uploadDir), "backups") }));
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found" });
   });
@@ -55,7 +59,8 @@ export function createApp(db: DB, opts: AppOptions) {
       return void res.status(409).json({ error: err.message, code: "RuleChangeNeedsAck", affectedWeeks: err.affectedWeeks });
     }
     if (err instanceof CotwError) return void res.status(err.status).json({ error: err.message, blockers: err.blockers });
-    if (err instanceof IncentiveError ||
+    if (err instanceof UserError ||
+        err instanceof IncentiveError ||
         err instanceof ConversionError || err instanceof CallerError || err instanceof WeekError || err instanceof ManualEntryError) return void res.status(err.status).json({ error: err.message });
     if (err instanceof CdrParseError) return void res.status(400).json({ error: err.message });
     if (err instanceof multer.MulterError) {

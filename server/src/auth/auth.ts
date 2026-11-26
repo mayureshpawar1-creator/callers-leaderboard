@@ -29,7 +29,7 @@ export function validateNewPassword(password: unknown): string | null {
   return null;
 }
 
-const tokenHash = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
+export const tokenHash = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
 
 export function createSession(db: DB, userId: number): string {
   const token = crypto.randomBytes(32).toString("base64url");
